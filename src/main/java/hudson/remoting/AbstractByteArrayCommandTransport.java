@@ -18,7 +18,7 @@ import java.util.logging.Logger;
  */
 public abstract class AbstractByteArrayCommandTransport extends CommandTransport {
     protected Channel channel;
-    
+    private Thread writingThread;
     /**
      * Writes a byte[] to the transport.
      * 
@@ -68,6 +68,10 @@ public abstract class AbstractByteArrayCommandTransport extends CommandTransport
             }
 
             public void terminate(IOException e) {
+                Thread w = writingThread;
+                if (w != null) {
+                    w.interrupt();
+                }
                 receiver.terminate(e);
             }
         });
@@ -75,11 +79,16 @@ public abstract class AbstractByteArrayCommandTransport extends CommandTransport
 
     @Override
     public final void write(Command cmd, boolean last) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(baos);
-        cmd.writeTo(channel,oos);
-        oos.close();
-        writeBlock(channel,baos.toByteArray());
+        try {
+            writingThread = Thread.currentThread();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            cmd.writeTo(channel,oos);
+            oos.close();
+            writeBlock(channel,baos.toByteArray());
+        } finally {
+            writingThread = null;
+        }
     }
 
     private static final Logger LOGGER = Logger.getLogger(AbstractByteArrayCommandTransport.class.getName());
